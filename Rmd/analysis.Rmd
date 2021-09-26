@@ -1,0 +1,377 @@
+---
+title: "Analysis"
+author: "Zen Tamura"
+date: 2021-09-15
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+R snippets to create plots and run hypothesis tests.
+
+```{r setup, include=FALSE}
+# knitr::opts_chunk$set(echo = TRUE)
+# knitr::opts_chunk$set(error = FALSE)
+# knitr::opts_chunk$set(message = FALSE)
+# knitr::opts_chunk$set(warning = FALSE)
+
+##########
+knitr::opts_chunk$set(root.dir = rprojroot::find_rstudio_root_file())
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+##########
+```
+
+
+```{r}
+library(tidyverse)
+library(reshape2)
+library(ggsci)
+library(ggpubr)
+```
+
+
+```{r}
+sessionInfo()
+```
+
+
+# Load data
+
+```{r}
+voltage_data <- read_csv("data/voltage_data_210915.csv",
+                         locale = locale(encoding = "UTF-8"))
+voltage_data_flattend <- melt(voltage_data, "log([K+]out)")
+
+raw_data <- read_csv("data/resting_potential_raw_data.csv",
+                     locale = locale(encoding = "UTF-8"))
+```
+
+# Line plot
+
+```{r}
+potassium_vs_voltage <- voltage_data_flattend %>%
+    filter(variable %in% c("measured_voltage (mV)", "Nernst theoretical voltage (mV)", 
+                           "GHK theoretical voltage (mV)")) %>% 
+    ggplot(aes(x = `log([K+]out)`, y = value, color = variable)) +
+    geom_line() +
+    geom_point() +
+    theme_classic()
+
+```
+
+
+```{r}
+voltage_data_flattened_filtered <-voltage_data_flattend %>%
+    filter(`variable` %in% c("measured_voltage (mV)", "Nernst theoretical voltage (mV)", 
+                           "GHK theoretical voltage (mV)"))
+voltage_data_flattened_filtered$standard_error <- c(voltage_data$standard_error, NA,
+                                                    NA, NA, NA, NA, NA, NA, NA, NA,
+                                                    NA)
+```
+
+```{r}
+potassium_vs_voltage <- voltage_data_flattened_filtered %>%
+    ggplot(aes(x = `log([K+]out)`, y = value, color = variable)) +
+    geom_line() +
+    geom_point() +
+    geom_errorbar(aes(ymin = value - standard_error,
+                      ymax = value + standard_error,
+                      width = 0.1)) +
+    theme_classic() +
+    scale_color_lancet()
+potassium_vs_voltage +
+    ggsave("result/potassium_vs_voltage.pdf")
+```
+
+
+```{r}
+potassium_vs_voltage + 
+    geom_errorbar(aes(ymin = value - standard_error,
+                      ymax = value + standard_error,
+                      width = 0.4))
+```
+
+
+# Box plots
+
+```{r}
+raw_data_box_plots <- ggboxplot(data = raw_data,
+                                x = "solution",
+                                y = "membrane_potential",
+                                color = "solution",
+                                add = "jitter",
+                                palette = "lancet",
+                                width = 0.2) +
+  labs(x = "Solution", y = "Membrane Potential (mV)") +
+  ggsave("result/raw_data_boxplots.pdf")
+```
+
+
+# 1 sample Wilcoxon Test
+
+## Organize data by solution
+
+```{r}
+solution1 <- raw_data %>% 
+  filter(solution == 1)
+
+solution2 <- raw_data %>% 
+  filter(solution == 2)
+
+solution3 <- raw_data %>% 
+  filter(solution == 3)
+
+solution4 <- raw_data %>% 
+  filter(solution == 4)
+
+solution5 <- raw_data %>% 
+  filter(solution == 5)
+
+solution6 <- raw_data %>% 
+  filter(solution == 6)
+```
+
+## Run Wilcoxon tests
+
+### Vs Nernst Equation
+
+```{r}
+# solution1_nernst <- voltage_data$`Nernst theoretical voltage (mV)`[1]
+# solution1_1sample_wilcoxon_nernst <- wilcox.test(solution1$membrane_potential,
+#                                                  mu = solution1_nernst, 
+#                                                  alternative = "greater")
+
+run_1sample_wilcoxon_nernst <- function(solution_data, 
+                                        solution_number, 
+                                        voltage_data, 
+                                        alternative) {
+  # Runs 1 sample wilcoxon tests for each solution
+  
+  solution_nernst_theoretical <- voltage_data$`Nernst theoretical voltage (mV)`[solution_number]
+  solution_1sample_wilcoxon_nernst <- wilcox.test(solution_data$membrane_potential,
+                                                  mu = solution_nernst_theoretical,
+                                                  alternative = alternative)
+  return(solution_1sample_wilcoxon_nernst)
+}
+```
+
+```{r}
+solution1_1sample_wilcoxon_nernst <- run_1sample_wilcoxon_nernst(solution1,
+                                                                 1,
+                                                                 voltage_data,
+                                                                 "two.sided")
+
+solution2_1sample_wilcoxon_nernst <- run_1sample_wilcoxon_nernst(solution2,
+                                                                 2,
+                                                                 voltage_data,
+                                                                 "two.sided")
+
+solution3_1sample_wilcoxon_nernst <- run_1sample_wilcoxon_nernst(solution3,
+                                                                 3,
+                                                                 voltage_data,
+                                                                 "two.sided")
+
+solution4_1sample_wilcoxon_nernst <- run_1sample_wilcoxon_nernst(solution4,
+                                                                 4,
+                                                                 voltage_data,
+                                                                 "two.sided")
+
+solution5_1sample_wilcoxon_nernst <- run_1sample_wilcoxon_nernst(solution5,
+                                                                 5,
+                                                                 voltage_data,
+                                                                 "two.sided")
+```
+
+### Vs GHK Theoretical Values
+
+```{r}
+run_1sample_wilcoxon_GHK <- function(solution_data, 
+                                     solution_number, 
+                                     voltage_data, 
+                                     alternative) {
+  # Runs 1 sample wilcoxon tests for each solution
+  
+  solution_GHK_theoretical <- voltage_data$`GHK theoretical voltage (mV)`[solution_number]
+  solution_1sample_wilcoxon_GHK <- wilcox.test(solution_data$membrane_potential,
+                                               mu = solution_GHK_theoretical, 
+                                               alternative = alternative)
+  return(solution_1sample_wilcoxon_GHK)
+}
+```
+
+```{r}
+solution1_1sample_wilcoxon_GHK <- run_1sample_wilcoxon_GHK(solution1,
+                                                           1,
+                                                           voltage_data,
+                                                           "two.sided")
+
+solution2_1sample_wilcoxon_GHK <- run_1sample_wilcoxon_GHK(solution2,
+                                                           2,
+                                                           voltage_data,
+                                                           "two.sided")
+
+
+solution3_1sample_wilcoxon_GHK <- run_1sample_wilcoxon_GHK(solution3,
+                                                           3,
+                                                           voltage_data,
+                                                           "two.sided")
+
+solution4_1sample_wilcoxon_GHK <- run_1sample_wilcoxon_GHK(solution4,
+                                                           4,
+                                                           voltage_data,
+                                                           "two.sided")
+
+solution5_1sample_wilcoxon_GHK <- run_1sample_wilcoxon_GHK(solution5,
+                                                           5,
+                                                           voltage_data,
+                                                           "two.sided")
+```
+
+# 1 sample t tests
+
+## Vs Nernst
+
+```{r}
+run_1sample_t_test_nernst <- function(solution_data, 
+                                      solution_number,
+                                      voltage_data,
+                                      alternative) {
+  # Runs 1 sample wilcoxon tests for each solution
+  
+  solution_1sample_nernst <- voltage_data$`Nernst theoretical voltage (mV)`[solution_number]
+  solution_1sample_ttest_nernst <- t.test(solution_data$membrane_potential,
+                                          mu = solution_1sample_nernst, 
+                                          alternative = alternative)
+  return(solution_1sample_ttest_nernst)
+}
+```
+
+```{r}
+solution1_1sample_ttest_nernst <- run_1sample_t_test_nernst(solution1,
+                                                            1,
+                                                            voltage_data,
+                                                            "two.sided")
+
+solution2_1sample_ttest_nernst <- run_1sample_t_test_nernst(solution2,
+                                                            2,
+                                                            voltage_data,
+                                                            "two.sided")
+
+solution3_1sample_ttest_nernst <- run_1sample_t_test_nernst(solution3,
+                                                            3,
+                                                            voltage_data,
+                                                            "two.sided")
+
+solution4_1sample_ttest_nernst <- run_1sample_t_test_nernst(solution4,
+                                                            4,
+                                                            voltage_data,
+                                                            "two.sided")
+
+solution5_1sample_ttest_nernst <- run_1sample_t_test_nernst(solution5,
+                                                            5,
+                                                            voltage_data,
+                                                            "two.sided")
+```
+
+## Vs GHK
+
+```{r}
+run_1sample_ttest_GHK <- function(solution_data, 
+                                  solution_number, 
+                                  voltage_data, 
+                                  alternative) {
+  # Runs 1 sample wilcoxon tests for each solution
+  
+  solution_GHK_theoretical <- voltage_data$`GHK theoretical voltage (mV)`[solution_number]
+  solution_1sample_ttest_GHK <- t.test(solution_data$membrane_potential,
+                                       mu = solution_GHK_theoretical, 
+                                       alternative = alternative)
+  return(solution_1sample_ttest_GHK)
+}
+```
+
+```{r}
+solution1_1sample_ttest_GHK <- run_1sample_ttest_GHK(solution1,
+                                                     1,
+                                                     voltage_data,
+                                                     "two.sided")
+
+solution2_1sample_ttest_GHK <- run_1sample_ttest_GHK(solution2,
+                                                     2,
+                                                     voltage_data,
+                                                     "two.sided")
+
+solution3_1sample_ttest_GHK <- run_1sample_ttest_GHK(solution3,
+                                                     3,
+                                                     voltage_data,
+                                                     "two.sided")
+
+solution4_1sample_ttest_GHK <- run_1sample_ttest_GHK(solution4,
+                                                     4,
+                                                     voltage_data,
+                                                     "two.sided")
+
+
+solution5_1sample_ttest_GHK <- run_1sample_ttest_GHK(solution5,
+                                                     5,
+                                                     voltage_data,
+                                                     "two.sided")
+```
+
+
+# Shapiro-Wilk Test for Normality
+
+```{r}
+run_shapiro_test <- function(data) {
+  p_values <- vector("list", 5)
+  test_statistic <- vector("list", 5)
+  solution <- vector("list", 5)
+  for (i in 1:5) {
+    solution_data <- data %>% 
+      filter(solution == i)
+    shapiro_test_result <- shapiro.test(solution_data$membrane_potential)
+    p_values[[i]] <- shapiro_test_result$p.value
+    test_statistic[[i]] <- shapiro_test_result$statistic
+    solution[[i]] <- i
+    print(shapiro_test_result$p.value)
+  }
+  ks_result_aggr <- data.frame("solution" = unlist(solution),
+                               "p_values" = unlist(p_values),
+                               "test_statistic" = unlist(test_statistic))
+  return(ks_result_aggr)
+}
+shapiro_result <- run_shapiro_test(raw_data)
+```
+
+# Quantile-quantile plots
+
+```{r}
+generate_faceted_qqplots <- function(data, shapiro_result) {
+  # Generates faceted qq plots
+  
+  shapiro_result_mod <- shapiro_result %>% 
+    mutate(p_sci = format(p_values, digits = 3, scientific = FALSE)) %>% 
+    mutate(p_sci = paste("P =", p_sci))
+  
+  qqplot <- ggqqplot(data, 
+                     "membrane_potential",
+                     ggtheme = theme_bw(),
+                     conf.int = FALSE,
+                     size = 0.7,
+                     color = "black") +
+    facet_grid(cols = vars(solution)) +
+    geom_text(data = shapiro_result_mod, aes(x = -0.6, y = -12, label = p_sci),
+              size = 2.9, inherit.aes = FALSE) +
+    theme(aspect.ratio = 1) +
+    labs(x = "Theoretical Quantiles",
+         y = "Sample Quantiles")
+  qqplot$layers[[1]]$aes_params$colour <- "red"
+  qqplot$layers[[2]]$aes_params$size <- 0.5
+  
+  return(qqplot)
+}
+qqplot <- generate_faceted_qqplots(raw_data, shapiro_result)
+# qqplot +
+#   ggsave("result/qqplot.pdf")
+```
+
